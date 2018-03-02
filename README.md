@@ -1,2 +1,2 @@
 # Trader
-Repository for testing a development 
+Test only repo
