@@ -10,49 +10,105 @@ import math
 class PeakTransformer(BaseEstimator, TransformerMixin):
 
     def transform(self, X, feature='close', **transform_params):
+        #PeakTransformer.entropy_peak_detection(X, feature)
+        PeakTransformer.S_1(X)
+        pass
+
+    def fit(self, X, y=None, **fit_params):
+        return self
+
+    """ peak detection method #1 as formulated by:
+        https://www.researchgate.net/publication/228853276_Simple_Algorithms_for_Peak_Detection_in_Time-Series
+
+               Parameters
+               ----------
+               X : pd.Dataframe
+                   df of values to be used for estimate
+
+               k : int
+                   Number of temporal neighbors to compare
+
+               Returns
+               -------
+               X : np.array
+
+           """
+    def S_1(X, k =2, feature = 'close'):
+        X = X[feature].values
+
+        for i in range(k, len(X) - k - 1):
+            N_plus = X[i + 1:k + i + 1]  # k right temporal neighbors
+            N_minus = X[i - k:i]  # k left temporal neighbors
+            S = (np.max(N_plus - X[i]) + np.max(N_minus - X[i]))/2
+
+            print(np.max(N_plus - X[i]),np.max(N_minus - X[i]),S)
+            if i == 3:
+                break
+        pass
+
+
+
+    """ peak detection method #4 as formulated by:
+        https://www.researchgate.net/publication/228853276_Simple_Algorithms_for_Peak_Detection_in_Time-Series
+
+            Parameters
+            ----------
+            X : pd.Dataframe
+                df of values to be used for estimate
+
+            w : int
+                Gaussian kde histogram window size
+
+            k : int
+                Number of temporal neighbors to compare
+
+            Returns
+            -------
+            X : np.array
+                
+        """
+    def entropy_peak_detection(X, w=6, k=2, feature='close'):
         h = PeakTransformer.ent(X[feature])
         print(h)
         # prob_density, logprob = PeakTransformer.kde(x = X['close'].values.reshape(-1,1), w= 1.9)
 
         X = X[feature].values
-        w = 6         # gaussian kde histogram window size
-        k = 2           # number of temporal neighbors to compare
+        #w = 6  # gaussian kde histogram window size
+        #k = 2  # number of temporal neighbors to compare
         S = []
-        for i in range(k,len(X)-k-1):
-
-            N, N_prime = PeakTransformer.setbuilder(k,i,X)
-            #print(N_prime)
-            #print(N)
-            #print('entropy H=', PeakTransformer.entropy(N, w))
-            #print('entropy H=', PeakTransformer.entropy(N_prime, w))
+        for i in range(k, len(X) - k - 1):
+            N, N_prime = PeakTransformer.setbuilder(k, i, X)
+            # print(N_prime)
+            # print(N)
+            # print('entropy H=', PeakTransformer.entropy(N, w))
+            # print('entropy H=', PeakTransformer.entropy(N_prime, w))
             S.append(PeakTransformer.entropy(N, w) - PeakTransformer.entropy(N_prime, w))
 
         S = [abs(number) for number in S]
-        print('len(X)', len(X),'len(X)-k', len(X)-k)
-        print('len(S)', len(S), 'k=',k)
+        print('len(X)', len(X), 'len(X)-k', len(X) - k)
+        print('len(S)', len(S), 'k=', k)
         max_S = max(S)
         min_S = min(S)
         mean_S = sum(S) / float(len(S))
         peaks_i = []
         for i in range(len(S)):
-            if S[i] > (mean_S+max_S*3)/4:
-                peaks_i.append(i+k-1)
+            if S[i] > (mean_S + max_S * 3) / 4:
+                peaks_i.append(i + k - 1)
         peaks = [X[i] for i in peaks_i]
 
-        print('max',max_S)
-        print('min',min_S)
-        print('mean',mean_S)
+        print('max', max_S)
+        print('min', min_S)
+        print('mean', mean_S)
 
-        max_i = S.index(max(S))+k
+        max_i = S.index(max(S)) + k
         print('max index', max_i)
-        min_i = S.index(min(S))+k
-        print('min index',min_i)
-
+        min_i = S.index(min(S)) + k
+        print('min index', min_i)
 
         plt.plot(X)
         plt.plot(peaks_i, peaks, 'g^')
         plt.plot([min_i], [X[min_i]], 'r^')
-        #plt.plot(X[max_i-k:max_i+k])
+        # plt.plot(X[max_i-k:max_i+k])
         plt.ylabel('BTC/USDT Price')
         plt.xlabel('Periods')
         plt.show()
@@ -65,10 +121,7 @@ class PeakTransformer(BaseEstimator, TransformerMixin):
         # # plt.ylim(0.00, 0.30)
         # plt.show()
 
-        return X
-
-    def fit(self, X, y=None, **fit_params):
-        return self
+        return peaks
 
     def setbuilder(k, i, T):
         N_plus = T[i + 1:k + i + 1]                 # k right temporal neighbors
