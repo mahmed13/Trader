@@ -11,7 +11,6 @@ from pytrends.request import TrendReq
 class NonPricingData(): # Update needed: add update feature similar to poloniexdata.py
 
     # (helper function) handles making Google Trends API calls
-    # returns interest level df
     def TrendDataRequest(self, new_date, old_date, kw_list):
         # trend object
         pytrend = TrendReq()
@@ -22,10 +21,35 @@ class NonPricingData(): # Update needed: add update feature similar to poloniexd
         # API Call -- Download Trend Data
         pytrend.build_payload(kw_list=kw_list, timeframe=timeframe)
 
+        # return df
         return pytrend.interest_over_time()
+
+    # renormalization using scalining and concatination
+    def renormalize(self, kw_list, new_date, old_date, overlap, original_df, prepend_df):
+        # Renormalize the dataset and drop last line
+        for kw in kw_list:
+            beg = new_date
+            end = old_date - timedelta(days=1)
+
+            # Since we might encounter zeros, we loop over the
+            # overlap until we find a non-zero element
+            for t in range(1, overlap + 1):
+                if prepend_df[kw].iloc[-t] != 0:
+                    # theses two elements in the df represent the same day, different sample for normalization
+                    scaling = original_df[kw].iloc[t - 1] / prepend_df[kw].iloc[-t]
+                    break
+                elif t == overlap:
+                    print('Did not find non-zero overlap, set scaling to zero! Increase Overlap!')
+                    scaling = 0
+
+            # Apply scaling
+            prepend_df.loc[beg:end, kw] = prepend_df.loc[beg:end, kw] * scaling
+        interest_over_time_df = pd.concat([prepend_df[:-overlap], original_df])
+        return interest_over_time_df
 
     # Generates google trend data with day granularity given a single search term.
     def daily_trends(self, search_term):
+        ## PARAMS ##
         # The maximum for a timeframe for which we get daily data is 270.
         # Therefore we could go back 269 days. However, since there might
         # be issues when rescaling, e.g. zero entries, we should have an
@@ -39,21 +63,16 @@ class NonPricingData(): # Update needed: add update feature similar to poloniexd
         start_date = datetime(2016, 3, 9).date()
 
         ## FIRST RUN ##
-        # Login to Google. Only need to run this once, the rest of requests will use the same session.
-        pytrend = TrendReq()
-
         # Run the first time (if we want to start from today, otherwise we need to ask for an end_date as well
         today = datetime.today().date()
         old_date = today
-
         # Go back in time
         new_date = today - timedelta(days=step)
-        #new_date = today - timedelta(days=5)
 
         # request trend data
         interest_over_time_df = NonPricingData().TrendDataRequest(new_date=new_date,old_date=old_date,kw_list=kw_list)
 
-        ## RUN ITERATIONS
+        ## RUN ITERATIONS ##
         while new_date > start_date:
 
             ### Save the new date from the previous iteration.
@@ -75,35 +94,21 @@ class NonPricingData(): # Update needed: add update feature similar to poloniexd
             # request trend data
             temp_df = NonPricingData().TrendDataRequest(new_date=new_date, old_date=old_date, kw_list=kw_list)
 
-
+            # check request contents
             if (temp_df.empty):
                 raise ValueError(
-                    'Google sent back an empty dataframe. Possibly there were no searches at all during the this period! Set start_date to a later date.')
+                    'Google sent back an empty dataframe. Possibly there were no searches at all during the this period! '
+                    'Set start_date to a later date.')
 
-            # Renormalize the dataset and drop last line
-            for kw in kw_list:
-                beg = new_date
-                end = old_date - timedelta(days=1)
-
-                # Since we might encounter zeros, we loop over the
-                # overlap until we find a non-zero element
-                for t in range(1, overlap + 1):
-                    # print('t = ',t)
-                    # print(temp_df[kw].iloc[-t])
-                    if temp_df[kw].iloc[-t] != 0:
-                        # theses two elements in the df represent the same day, different sample for normalization
-                        scaling = interest_over_time_df[kw].iloc[t - 1] / temp_df[kw].iloc[-t]
-                        # print('Found non-zero overlap!')
-                        break
-                    elif t == overlap:
-                        print('Did not find non-zero overlap, set scaling to zero! Increase Overlap!')
-                        scaling = 0
-                # Apply scaling
-                temp_df.loc[beg:end, kw] = temp_df.loc[beg:end, kw] * scaling
-            interest_over_time_df = pd.concat([temp_df[:-overlap], interest_over_time_df])
+            # Renormalize and concate
+            interest_over_time_df = NonPricingData().renormalize(kw_list=kw_list,new_date=new_date,
+                                                                 old_date=old_date, overlap=overlap,
+                                                                 original_df=interest_over_time_df,
+                                                                 prepend_df=temp_df)
 
         # return dataset
         return interest_over_time_df
+
 
 
     def hash_rate(self):
