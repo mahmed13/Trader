@@ -3,12 +3,14 @@ import numpy as np
 import pandas as pd
 import datetime as datetime
 from sklearn.preprocessing import OneHotEncoder
+import holidays
+
 
 class DatesTransformer(BaseEstimator, TransformerMixin):
 
     def transform(self, X, **transform_params):
-
-        output_df = DatesTransformer.dates(self, X)
+        #output_df = DatesTransformer.dates(self, X)
+        output_df = DatesTransformer().holidays(X)
         return output_df
 
     def fit(self, X, y=None, **fit_params):
@@ -21,6 +23,15 @@ class DatesTransformer(BaseEstimator, TransformerMixin):
             return 2
         if day > 20:
             return 3
+
+    def holidays(self, X):
+        output_df = pd.DataFrame(list(map(DatesTransformer.isHoliday, X.index.values)), columns=['isHoliday'], index=X.index)
+        return output_df
+
+    def isHoliday(date):
+        if int(date) in holidays.UnitedStates():
+            return True
+        return False
 
     def dates(self, df):
         # output df - only contains features made in this method
@@ -81,3 +92,6 @@ class DatesTransformer(BaseEstimator, TransformerMixin):
         output_df[['beg_month', 'mid_month', 'end_month']] = pd.DataFrame(one_hot, dtype=np.int32,index=df.index)
 
         return output_df
+
+if __name__ == '__main__':
+    pass

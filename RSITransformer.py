@@ -32,7 +32,7 @@ class RSITransformer(BaseEstimator, TransformerMixin):
         """
         dataframe = historial_data
         rsi_values = abstract.RSI(dataframe, period_count)
-        print('Max RSI',rsi_values.max(), 'Min RSI', rsi_values.min())
+        #print('Max RSI',rsi_values.max(), 'Min RSI', rsi_values.min())
         rsi_result_data = []
         for rsi_value in rsi_values:
 

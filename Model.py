@@ -32,6 +32,7 @@ import numpy as np
 
 
 class Model:
+    PERIODS_IN_A_DAY = 288
     def run(self):
         DATA_DIR = "data_modified"
 
@@ -40,9 +41,10 @@ class Model:
             os.mkdir(DATA_DIR)
 
         dataFilenames = glob.glob('data/USDT_' + '*.csv')
-        n_periods = [1, 2, 6, 12, 36, 72, 144]
+        n_periods = [1, 2, 6, 12, 36, 72, 144, 288, 432, 288*2]
+        n_periods = [144*i for i in range(3,6)]
         # read data from file
-        for per in n_periods[0:1]:
+        for per in n_periods:
             for fileName in dataFilenames[1:2]:
                 try:
                     #print('Reading data from file',fileName)
@@ -63,9 +65,16 @@ class Model:
                 #PeakTransformer().transform(df.iloc[-300:], feature='close')
 
                 # feature engineer
-                df_npd = NonPricingData().daily_trends('bitcoin')['bitcoin']
-                print(df_npd.tail(10).index.dtypes)
-                return 0
+                df_npd = NonPricingData().daily_trends('bitcoin')
+                df_hash = NonPricingData().hash_rate()
+                #mask = (df.index > start_date) & (df.index <= end_date)
+
+                #print(df.tail(5))
+                #print(df_npd.index.values[-5:])
+                df = pd.merge(df, df_npd, left_index=True, right_index=True)
+                df = pd.merge(df, df_hash, left_index=True, right_index=True)
+                #print(df.tail())
+
                 df_sma = SMATransformer().transform(df, windows=[3, 5, 10, 20, 50, 100, 200], feature='close')
                 df_ema = EMATransformer().transform(df, windows=[3, 5, 10, 20, 50, 100, 200], feature='close')
                 df_vol = VolatilityTransformer().transform(df)
@@ -75,10 +84,10 @@ class Model:
                 df = pd.concat([df, df_sma], axis=1)
                 df = pd.concat([df, df_ema], axis=1)
                 df = pd.concat([df, df_vol], axis=1)
-                #df = pd.concat([df, df_dates], axis=1)
+                df = pd.concat([df, df_dates], axis=1)
 
-                print(df.groupby('rsi_is_cold')['rsi_is_cold'].count())
-                show_plots = True
+                #print(df.groupby('rsi_is_cold')['rsi_is_cold'].count())
+                show_plots = False
 
                 if show_plots:
                     fig, axes = plt.subplots(2, 1, sharex=True)
@@ -90,20 +99,20 @@ class Model:
                     plt.show()
 
                 # trim
-                df = df.iloc[-30000:]
+                df = df.iloc[-80000:]
                 df.dropna(inplace=True)
-                print(df.head(10))
+                print(list(df.columns.values))
                 X, y = LabelTransformer().transform(df=df, label_feature='close', periods=per)
 
 
                 # create feature union
                 features = []
 
-                #features.append(('standardize', StandardScaler()))
-                #features.append(('pca', PCA()))
-                #features.append(('kbest', SelectKBest(k=8)))
+                features.append(('standardize', StandardScaler()))
+                features.append(('pca', PCA()))
+                #features.append(('kbest', SelectKBest(k=16)))
 
-                #feature_union = FeatureUnion(features)
+                feature_union = FeatureUnion(features)
 
 
                 # create pipeline
@@ -117,7 +126,7 @@ class Model:
 
                 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 
-                parameters = {'logistic__C': [20, 3]}
+                parameters = {'logistic__C': [20, 7, 3, 0.1, 0.01]}
                 #parameters = {}
 
                 seed = 1
@@ -126,13 +135,15 @@ class Model:
                 tscv_n_splits = 4
                 tscv = TimeSeriesSplit(n_splits=tscv_n_splits)
                 clf = GridSearchCV(model, param_grid=parameters, n_jobs=1, cv=tscv, return_train_score=True)
-                print('training')
+                print('Training')
                 clf.fit(X, y)
 
+                print("Label distribution=", sum(y)/len(y),"/",1-sum(y)/len(y))
                 print('Best param=',clf.best_params_)
                 print('Best avg score=',clf.best_score_)
                 print('nth train score=', max(clf.cv_results_[('split%d_train_score' % (tscv_n_splits-1))]),
                       '\nnth test score=', max(clf.cv_results_[('split%d_test_score' % (tscv_n_splits-1))]))
+
                 print('More details...\n',clf.cv_results_)
 
 
@@ -145,8 +156,6 @@ class Model:
                 # print(results)
 
 
-def main():
-    Model().run()
-
+ 
 if __name__ == '__main__':
-    main()
+    Model().run()
