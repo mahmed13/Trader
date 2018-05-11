@@ -4,8 +4,10 @@ import pandas as pd
 import multiprocessing
 #from functools import partial
 
-FETCH_URL = "https://poloniex.com/public?command=returnChartData&currencyPair=%s&start=%d&end=%d&period=300"
-DATA_DIR = "data"
+P = 1
+PERIOD = ['300','1800']
+FETCH_URL = "https://poloniex.com/public?command=returnChartData&currencyPair=%s&start=%d&end=%d&period="+PERIOD[1]
+DATA_DIR = "data_"+PERIOD[1]
 COLUMNS = ["pair_name","date","high","low","open","close","volume","quoteVolume","weightedAverage"]
 
 class PoloniexTickers:

@@ -11,7 +11,7 @@ from pytrends.request import TrendReq
 class NonPricingData(): # Update needed: add update feature similar to poloniexdata.py
 
     # Generates google trend data with day granularity given a single search term.
-    def daily_trends(self, search_term):
+    def daily_trends(self, search_term, period_length=5):
         ## PARAMS ##
         # The maximum for a timeframe for which we get daily data is 270.
         # Therefore we could go back 269 days. However, since there might
@@ -23,7 +23,7 @@ class NonPricingData(): # Update needed: add update feature similar to poloniexd
         step = maxstep - overlap + 1
         kw_list = [search_term]
         start_date = datetime(2013, 12, 9).date()
-        #start_date = datetime(2016, 3, 9).date()
+        start_date = datetime(2016, 3, 9).date()       #testing
 
         ## FIRST RUN ##
         # Run the first time (if we want to start from today, otherwise we need to ask for an end_date as well
@@ -73,7 +73,7 @@ class NonPricingData(): # Update needed: add update feature similar to poloniexd
         interest_over_time_df['date'] = interest_over_time_df.index
         interest_over_time_df.index = pd.Series(convert_timestamp_to_unix_time(interest_over_time_df[search_term])).astype(np.int64)
 
-        interest_over_time_df = NonPricingData().spread_period(interest_over_time_df, search_term)
+        interest_over_time_df = NonPricingData().spread_period(interest_over_time_df, search_term, period_length)
 
         return interest_over_time_df
 
@@ -116,21 +116,38 @@ class NonPricingData(): # Update needed: add update feature similar to poloniexd
         return interest_over_time_df
 
     # (helper function) copys all daily trend data to period, Try making smoother lines between days
-    def spread_period(self, df, feature):    # needs work..
+    def spread_period(self, df, feature, period_length):    # needs work..
         df = df[feature]
-        PERIODS_IN_A_DAY = 288
+        SECONDS_IN_A_DAY = 86400
+        SECONDS_BTWN_PERIODS = period_length*60                     # where period length is in minutes
+        PERIODS_IN_A_DAY = int(SECONDS_IN_A_DAY/(SECONDS_BTWN_PERIODS))
+
+        #print('Seconds between periods=',SECONDS_BTWN_PERIODS)
+        #print('Periods in a day=', PERIODS_IN_A_DAY)
+
         start_date = df.index.values[0]
         end_date = df.index.values[-1]
+        #print(start_date, end_date)
+        all_dates = df.index.values
 
-        new_index = list(range(start_date, end_date+300*300, 300))
+        check_dates = [1 if abs(all_dates[i] - all_dates[i + 1]) != SECONDS_IN_A_DAY else 0 for i in
+                  range(len(all_dates) - 1)]
+        if sum(check_dates) > 0:
+            #all_dates = list(range(start_date, end_date + SECONDS_IN_A_DAY, SECONDS_IN_A_DAY))
+            all_dates = [start_date+(SECONDS_IN_A_DAY*i) for i in range(len(df))]
+            df = pd.DataFrame(df.values.tolist(), index=all_dates)
+            #print('??',(all_dates[-1] - all_dates[0])/SECONDS_IN_A_DAY)
+
+
+        new_index = list(range(start_date, start_date+(SECONDS_IN_A_DAY*len(all_dates)), SECONDS_BTWN_PERIODS)) # <-- fix
 
         df = pd.concat([df]*PERIODS_IN_A_DAY)
         df.sort_index(inplace=True)
 
-        lol = df.values.tolist()
 
-        # fix
-        new_index = new_index[0:len(df)]
+        #print('len(df)=',len(df),'| len(new_index)=',len(new_index))
+
+        lol = df.values.tolist()
 
         df = pd.DataFrame(lol, columns=[feature+'_trend'], index=new_index)
         return df
@@ -149,9 +166,14 @@ class NonPricingData(): # Update needed: add update feature similar to poloniexd
         df = pd.DataFrame(np.column_stack([times, hash_rates]), columns=['time', 'hash_rate'])
         df = df.set_index('time')
 
-        df = NonPricingData().spread_period(df, 'hash_rate')
+        df = NonPricingData().spread_period(df, 'hash_rate', 30)
 
         return df
+    def mempool(self):
+        response = util.call_api('charts/hash-rate?timespan=2years&format=json',
+                                 base_url='https://api.blockchain.info/')
+        mem_json = json.loads(response)
+        print(mem_json)
 
 # (helper function)
 def convert_timestamp_to_unix_time(timestamps):
@@ -172,18 +194,18 @@ if __name__ == '__main__':
     search_terms = ['fortnite','Lamar Odom', 'Bitcoin']
     search_terms = ['bitcoin']
 
-    df = NonPricingData().hash_rate()
+    NonPricingData().mempool()
+    #df = NonPricingData().hash_rate()
 
 
-    for search_term in search_terms:
-        #df = NonPricingData().daily_trends(search_term)
-        print(df.tail())
-        #NonPricingData().spread_period(df)
-
-        if True:
-            # plot
-            plt.plot(df)
-            plt.xticks(rotation=20)
-            plt.ylabel('Google Search Trends: \''+search_term+'\'')
-            plt.show()
+    # for search_term in search_terms:
+    #     df = NonPricingData().daily_trends(search_term, int(5)) # minutes
+    #     #NonPricingData().spread_period(df)
+    #
+    #     if False:
+    #         # plot
+    #         plt.plot(df)
+    #         plt.xticks(rotation=20)
+    #         plt.ylabel('Google Search Trends: \''+search_term+'\'')
+    #         plt.show()
 

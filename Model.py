@@ -9,6 +9,8 @@ from sklearn.decomposition import PCA
 from sklearn.feature_selection import SelectKBest
 from sklearn.preprocessing import StandardScaler
 from sklearn.base import TransformerMixin, BaseEstimator
+from sklearn import preprocessing
+import warnings
 from VolatilityTransformer import VolatilityTransformer
 from SMATransformer import SMATransformer
 from EMATransformer import EMATransformer
@@ -20,6 +22,8 @@ from RSITransformer import RSITransformer
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 from NonPricingData import NonPricingData
+from xgboost import XGBClassifier
+
 
 import matplotlib.pyplot as plt
 
@@ -32,23 +36,26 @@ import numpy as np
 
 
 class Model:
-    PERIODS_IN_A_DAY = 288
     def run(self):
-        DATA_DIR = "data_modified"
+        PERIOD_LENGTH =  5 # minutes
+        DATA_DIR = "data_5"
 
         # creates data directory
         if not os.path.exists(DATA_DIR):
             os.mkdir(DATA_DIR)
 
-        dataFilenames = glob.glob('data/USDT_' + '*.csv')
+        dataFilenames = glob.glob(DATA_DIR+'/USDT_' + '*.csv')
         n_periods = [1, 2, 6, 12, 36, 72, 144, 288, 432, 288*2]
-        n_periods = [144*i for i in range(3,6)]
+        #n_periods = [12, 36, 72, 144, 288, 432, 288*2]
+        #n_periods = [144*i for i in range(1,6)]
         # read data from file
         for per in n_periods:
             for fileName in dataFilenames[1:2]:
                 try:
                     #print('Reading data from file',fileName)
-                    df = pd.read_csv(fileName).iloc[-100000:] # modeling starts; 6mo = 52,416 periods
+                    df = pd.read_csv(fileName)
+                    print(len(df))
+                    df= df.iloc[-100000:] # modeling starts; 6mo = 52,416 periods
                 except:
                     print('Failed opening', fileName)
                     continue
@@ -65,18 +72,10 @@ class Model:
                 #PeakTransformer().transform(df.iloc[-300:], feature='close')
 
                 # feature engineer
-                df_npd = NonPricingData().daily_trends('bitcoin')
-                df_hash = NonPricingData().hash_rate()
-                #mask = (df.index > start_date) & (df.index <= end_date)
-
-                #print(df.tail(5))
-                #print(df_npd.index.values[-5:])
-                df = pd.merge(df, df_npd, left_index=True, right_index=True)
-                df = pd.merge(df, df_hash, left_index=True, right_index=True)
-                #print(df.tail())
-
-                df_sma = SMATransformer().transform(df, windows=[3, 5, 10, 20, 50, 100, 200], feature='close')
-                df_ema = EMATransformer().transform(df, windows=[3, 5, 10, 20, 50, 100, 200], feature='close')
+                df_npd = NonPricingData().daily_trends('bitcoin', period_length=PERIOD_LENGTH)
+                #df_hash = NonPricingData().hash_rate()
+                df_sma = SMATransformer().transform(df, windows=[1, 3, 5, 10, 20, 50, 100], feature='close')
+                df_ema = EMATransformer().transform(df, windows=[1, 3, 5, 10, 20, 50, 100], feature='close')
                 df_vol = VolatilityTransformer().transform(df)
                 df_dates = DatesTransformer().transform(df)
 
@@ -85,7 +84,8 @@ class Model:
                 df = pd.concat([df, df_ema], axis=1)
                 df = pd.concat([df, df_vol], axis=1)
                 df = pd.concat([df, df_dates], axis=1)
-
+                df = pd.merge(df, df_npd, left_index=True, right_index=True)
+                #df = pd.merge(df, df_hash, left_index=True, right_index=True)
                 #print(df.groupby('rsi_is_cold')['rsi_is_cold'].count())
                 show_plots = False
 
@@ -99,20 +99,23 @@ class Model:
                     plt.show()
 
                 # trim
-                df = df.iloc[-80000:]
+                print(len(df))
+                df = df.iloc[-30000:]
+                print(len(df))
                 df.dropna(inplace=True)
+                df.drop('volume', 1, inplace = True)
+                df.drop('quoteVolume', 1, inplace = True)
                 print(list(df.columns.values))
                 X, y = LabelTransformer().transform(df=df, label_feature='close', periods=per)
 
 
                 # create feature union
-                features = []
-
-                features.append(('standardize', StandardScaler()))
-                features.append(('pca', PCA()))
-                #features.append(('kbest', SelectKBest(k=16)))
-
-                feature_union = FeatureUnion(features)
+                # features = []
+                # features.append(('standardize', StandardScaler()))
+                # features.append(('pca', PCA()))
+                # features.append(('kbest', SelectKBest(k=16)))
+                #
+                # feature_union = FeatureUnion(features)
 
 
                 # create pipeline
@@ -120,14 +123,14 @@ class Model:
                 #estimators.append(('feature_union', feature_union))
                 #estimators.append(('pca', PCA()))
                 #estimators.append(('decision', DecisionTreeClassifier(criterion = "gini", max_depth=3, min_samples_leaf=5)))
-                estimators.append(('logistic', LogisticRegression()))
-
+                #estimators.append(('logistic', LogisticRegression()))
+                estimators.append(('xgb', XGBClassifier()))
                 model = Pipeline(estimators)
 
                 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 
                 parameters = {'logistic__C': [20, 7, 3, 0.1, 0.01]}
-                #parameters = {}
+                parameters = {}
 
                 seed = 1
                 np.random.seed(seed)
@@ -156,6 +159,7 @@ class Model:
                 # print(results)
 
 
- 
+
 if __name__ == '__main__':
+    warnings.filterwarnings(action='ignore', category=DeprecationWarning)
     Model().run()
